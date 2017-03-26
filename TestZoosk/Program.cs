@@ -12,6 +12,7 @@ using log4net.Core;
 using log4net.Repository.Hierarchy;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using OpenQA.Selenium.Edge;
 using OpenQA.Selenium.Interactions;
 using OpenQA.Selenium.PhantomJS;
 using OpenQA.Selenium.Support.UI;
@@ -35,6 +36,7 @@ namespace ZooskCrawler
             {
                 SetLoggingLevel(options.Debug ? Level.Debug : options.Log ? Level.Info : Level.Off);
 
+                Log.Info("=======================================");
                 Log.Debug("Options loaded > ");
                 Log.Debug(options.Username);
                 Log.Debug(options.Password);
@@ -134,7 +136,7 @@ namespace ZooskCrawler
                 //Send message here
                 Log.Info("Message should be sent here");
 
-                Log.Info("Addiing profile to contacted list");
+                Log.Info("Adding profile to contacted list");
                 ContactedProfiles.Add(profile.Key, profile.Value);
 
                 Log.Info("Sleeping for a moment");
@@ -205,7 +207,7 @@ namespace ZooskCrawler
 
             Thread.Sleep(1000);
             Log.Info("Clicking search button");
-            driver.FindElements(By.XPath("//section[descendant::h2[contains(text(), 'test')]]/footer/span/span"))[0]
+            driver.FindElements(By.XPath($"//section[descendant::h2[contains(text(), '{CsvOptions["Saved_Search"]}')]]/footer/span/span"))[0]
                 .Click();
 
             Log.Info("Waiting for grid button to show up");
@@ -250,10 +252,8 @@ namespace ZooskCrawler
         {
             if (guiOrCli)
             {
-                var options = new ChromeOptions();
-                options.AddArgument("start-maximized");
-
-                var driver = new ChromeDriver(options) {Url = "https://www.zoosk.com/"};
+                var driver = new EdgeDriver {Url = "https://www.zoosk.com/"};
+                driver.Manage().Window.Maximize();
 
                 return driver;
             }
