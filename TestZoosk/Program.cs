@@ -51,6 +51,7 @@ namespace ZooskCrawler
                     options.Contacts = "Contacts.csv";
 
                 Log.Info("=======================================");
+                Log.Debug(args.ToString());
                 Log.Debug("Options loaded > ");
                 Log.Debug($"Username: {options.Username}");
                 Log.Debug($"Password: {options.Password}");
@@ -62,7 +63,7 @@ namespace ZooskCrawler
                 Log.Debug($"GuiOrCli: {options.GuiOrCli}");
                 Log.Debug($"TotalVsContactedVsNew: {options.TotalVsContactedVsNew}");
 
-                Log.Info("Parsing options file");
+                Log.Debug($"Parsing options file {options.OptionsFile}");
                 ParseOptionsFile(options.OptionsFile);
 
                 foreach (var option in CsvOptions)
@@ -71,11 +72,11 @@ namespace ZooskCrawler
                 if (CsvOptions.ContainsKey("Max_wait"))
                     WaitMaxLimit = Convert.ToInt32(CsvOptions["Max_wait"]);
 
-                Log.Info("Parsing contacted file");
+                Log.Debug($"Parsing contacted profiles file {options.Contacts}");
                 LoadContactedProfiles(options.Contacts);
 
-                Log.Info("Finished parsing options file");
-
+                Log.Debug($"{ContactedProfiles.Count} contacted profiles loaded");
+                
                 Log.Info("Starting process");
                 StartProcess(options);
             }
@@ -130,7 +131,12 @@ namespace ZooskCrawler
             {
                 Login(driver, wait, arguments);
                 SearchProfiles(driver, wait);
-                GetProfiles(driver, wait);
+
+                if (arguments.TotalVsContactedVsNew)
+                    GetProfiles(driver, wait);
+                else
+                    GetProfiles(driver, wait, Convert.ToInt32(CsvOptions["Number_of_matches_to_email"]));
+
                 ProcessProfiles(driver);
                 SaveContactedProfiles(ContactedProfiles, arguments.Contacts);
             }
@@ -153,6 +159,7 @@ namespace ZooskCrawler
 
         private static void ProcessProfiles(IWebDriver driver)
         {
+            Log.Info("Processing profiles");
             var profilesCounter = 1;
 
             foreach (var profile in ProfilesData)
@@ -164,31 +171,23 @@ namespace ZooskCrawler
                     if (!ContactedProfiles.ContainsKey(profile.Key))
                     {
                         RandomWait();
-                        Log.Info("Switching profile");
                         Log.Debug($"{profile.Key} - {profile.Value}");
                         driver.Url = $"https://www.zoosk.com/personals/datecard/{profile.Key}/about";
                         driver.Navigate();
 
                         //Send message here
+                        Log.Info($"Messaged {profile.Value} ({profile.Key})");
                         RandomWait();
-                        Log.Info("Message should be sent here");
-
-                        Log.Info("Adding profile to contacted list");
+                        
                         ContactedProfiles.Add(profile.Key, profile.Value);
 
-                        Log.Info("Sleeping for a moment");
                         RandomWait();
 
                         profilesCounter++;
                     }
-                    else
-                    {
-                        Log.Info("Profile already contacted, skipping");
-                    }
                 }
                 else
                 {
-                    Log.Info("Number of matches to email reached, breaking profiles loop");
                     break;
                 }
             }
@@ -196,7 +195,39 @@ namespace ZooskCrawler
 
         private static void GetProfiles(IWebDriver driver, WebDriverWait wait)
         {
-            Log.Info("Getting profiles data");
+            Log.Info("Getting profiles");
+            while (true)
+            {
+                RandomWait();
+                wait.Until(ExpectedConditions.ElementExists(By.XPath("//*[@data-zat='profile-pagination-next']")));
+
+                var nextButton = driver.FindElement(By.XPath("//*[@data-zat='profile-pagination-next']"));
+
+                //Gather profiles and send messages if not contacted here 
+                var profiles = driver.FindElements(By.XPath("//li[@class='grid-tile']"));
+
+                foreach (var profile in profiles)
+                {
+                    var profileDataGuid = profile.GetAttribute("data-guid");
+                    var profileName = profile.FindElement(By.TagName("h4")).Text;
+
+                    if(!ProfilesData.ContainsKey(profileDataGuid))
+                        ProfilesData.Add(profileDataGuid, profileName);
+                }
+
+                if (nextButton.GetAttribute("aria-disabled") == "true")
+                {
+                    break;
+                }
+
+                nextButton.Click();
+                RandomWait();
+            }
+        }
+
+        private static void GetProfiles(IWebDriver driver, WebDriverWait wait, int profilesNumber)
+        {
+            int counter = 0;
 
             while (true)
             {
@@ -213,18 +244,23 @@ namespace ZooskCrawler
                     var profileDataGuid = profile.GetAttribute("data-guid");
                     var profileName = profile.FindElement(By.TagName("h4")).Text;
 
-                    Log.Info($"Adding profile {profileDataGuid} to message queue");
-                    Log.Debug($"{profileDataGuid} - {profileName}");
-                    ProfilesData.Add(profileDataGuid, profileName);
+                    if (counter >= profilesNumber)
+                    {
+                        Log.Info("Profiles to contact reached, breaking loop");
+                        return;
+                    }
+
+                    if (!ProfilesData.ContainsKey(profileDataGuid))
+                        ProfilesData.Add(profileDataGuid, profileName);
+
+                    counter++;
                 }
 
                 if (nextButton.GetAttribute("aria-disabled") == "true")
                 {
-                    Log.Info("No more profiles found on search, breaking loop");
                     break;
                 }
 
-                Log.Info("Processing pagination");
                 nextButton.Click();
                 RandomWait();
             }
@@ -232,19 +268,19 @@ namespace ZooskCrawler
 
         private static void SearchProfiles(IWebDriver driver, WebDriverWait wait)
         {
+            Log.Info("Loading profiles");
             RandomWait();
-            Log.Info("Waiting for the search link to show up");
+            
             var searchLink =
                 wait.Until(ExpectedConditions.ElementExists(By.XPath("//span[@data-zat='profile-edit-search-link']")));
-            Log.Info("Link loaded, clicking it");
             searchLink.Click();
 
             RandomWait();
-            Log.Info("Switching to saved searches tab");
+            
             wait.Until(ExpectedConditions.ElementExists(By.XPath("//ul[@role='tablist']/li[2]"))).Click();
 
             RandomWait();
-            Log.Info("Performing a mouse over over selected saved search");
+            
             Log.Debug($"Saved search {CsvOptions["Saved_Search"]}");
             var act = new Actions(driver);
             act.MoveToElement(
@@ -253,7 +289,6 @@ namespace ZooskCrawler
                 .Perform();
 
             RandomWait();
-            Log.Info("Clicking search button");
             driver.FindElements(
                     By.XPath(
                         $"//section[descendant::h2[contains(text(), '{CsvOptions["Saved_Search"]}')]]/footer/span/span"))
@@ -261,13 +296,13 @@ namespace ZooskCrawler
                 .Click();
 
             RandomWait();
-            Log.Info("Waiting for grid button to show up");
+            
             Thread.Sleep(5000);
             var gridButton =
                 wait.Until(ExpectedConditions.ElementExists(By.XPath("//span[@class='view-toggle view-toggle-grid']")));
 
             RandomWait();
-            Log.Info("Grid button loaded, clicking it");
+            
             gridButton.Click();
 
             RandomWait();
@@ -275,18 +310,16 @@ namespace ZooskCrawler
 
         private static void Login(IWebDriver driver, WebDriverWait wait, Arguments arguments)
         {
-            Log.Info("Opening browser");
+            Log.Info("Logging in");
             driver.Navigate();
 
             RandomWait();
-            Log.Info("Opening login form");
+            
             driver.FindElement(By.XPath("//span[@id='login-form-trigger']")).Click();
 
-            Log.Info("Waiting for login form to show up");
             wait.Until(ExpectedConditions.ElementExists(By.XPath("//div[@class='modal-wrapper-absolute']")));
 
             RandomWait();
-            Log.Info("Typing credentials");
             Log.Debug($"User: {arguments.Username} - Password: {arguments.Password}");
             driver.FindElements(By.XPath("//input[@name='email']"))[1].SendKeys(arguments.Username);
             RandomWait();
@@ -297,6 +330,8 @@ namespace ZooskCrawler
 
         private static void SaveContactedProfiles(Dictionary<string, string> contactedProfiles, string contactsFile)
         {
+            Log.Info("Saving contacted profiles");
+
             using (var sw = new StreamWriter(contactsFile, false))
             {
                 foreach (var profile in contactedProfiles)
@@ -369,7 +404,6 @@ namespace ZooskCrawler
         private static void RandomWait()
         {
             var wait = new Random().Next(1, WaitMaxLimit + 1);
-            Log.Debug($"Waiting for {wait} seconds");
             Thread.Sleep(TimeSpan.FromSeconds(wait));
         }
     }
