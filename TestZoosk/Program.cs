@@ -78,12 +78,15 @@ namespace ZooskCrawler
                 Log.Debug($"{ContactedProfiles.Count} contacted profiles loaded");
                 
                 Log.Info("Starting process");
+
                 StartProcess(options);
             }
             else
             {
                 options.GetUsage();
             }
+
+            Environment.Exit(0);
         }
 
         private static void LoadContactedProfiles(string contactsFile)
@@ -143,9 +146,22 @@ namespace ZooskCrawler
             catch (Exception e)
             {
                 Log.Error(e);
+                
+                Log.Info("Generating screenshot");
+                
+                var ss = ((ITakesScreenshot)driver).GetScreenshot();
+                var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                    $"Crawler error - {DateTime.Now.ToLongTimeString()}.png".Replace(":", "_"));
+
+                Log.Info(path);
+
+                ss.SaveAsFile(path, ScreenshotImageFormat.Png);
+
+                driver.Manage().Cookies.DeleteAllCookies();
                 driver.Close();
             }
 
+            driver.Manage().Cookies.DeleteAllCookies();
             driver.Close();
             Log.Info("Process finished");
 
@@ -199,7 +215,7 @@ namespace ZooskCrawler
             while (true)
             {
                 RandomWait();
-                wait.Until(ExpectedConditions.ElementExists(By.XPath("//*[@data-zat='profile-pagination-next']")));
+                wait.Until(ExpectedConditions.ElementIsVisible(By.XPath("//*[@data-zat='profile-pagination-next']")));
 
                 var nextButton = driver.FindElement(By.XPath("//*[@data-zat='profile-pagination-next']"));
 
@@ -232,7 +248,7 @@ namespace ZooskCrawler
             while (true)
             {
                 RandomWait();
-                wait.Until(ExpectedConditions.ElementExists(By.XPath("//*[@data-zat='profile-pagination-next']")));
+                wait.Until(ExpectedConditions.ElementIsVisible(By.XPath("//*[@data-zat='profile-pagination-next']")));
 
                 var nextButton = driver.FindElement(By.XPath("//*[@data-zat='profile-pagination-next']"));
 
@@ -272,12 +288,12 @@ namespace ZooskCrawler
             RandomWait();
             
             var searchLink =
-                wait.Until(ExpectedConditions.ElementExists(By.XPath("//span[@data-zat='profile-edit-search-link']")));
+                wait.Until(ExpectedConditions.ElementIsVisible(By.XPath("//span[@data-zat='profile-edit-search-link']")));
             searchLink.Click();
 
             RandomWait();
             
-            wait.Until(ExpectedConditions.ElementExists(By.XPath("//ul[@role='tablist']/li[2]"))).Click();
+            wait.Until(ExpectedConditions.ElementIsVisible(By.XPath("//ul[@role='tablist']/li[2]"))).Click();
 
             RandomWait();
             
@@ -299,7 +315,7 @@ namespace ZooskCrawler
             
             Thread.Sleep(5000);
             var gridButton =
-                wait.Until(ExpectedConditions.ElementExists(By.XPath("//span[@class='view-toggle view-toggle-grid']")));
+                wait.Until(ExpectedConditions.ElementIsVisible(By.XPath("//span[@class='view-toggle view-toggle-grid']")));
 
             RandomWait();
             
@@ -317,10 +333,11 @@ namespace ZooskCrawler
             
             driver.FindElement(By.XPath("//span[@id='login-form-trigger']")).Click();
 
-            wait.Until(ExpectedConditions.ElementExists(By.XPath("//div[@class='modal-wrapper-absolute']")));
+            wait.Until(ExpectedConditions.ElementIsVisible(By.XPath("//div[@class='modal-wrapper-absolute']")));
 
             RandomWait();
             Log.Debug($"User: {arguments.Username} - Password: {arguments.Password}");
+            driver.FindElements(By.XPath("//input[@name='email']"))[1].Clear();
             driver.FindElements(By.XPath("//input[@name='email']"))[1].SendKeys(arguments.Username);
             RandomWait();
             driver.FindElements(By.XPath("//input[@name='password']"))[1].SendKeys(arguments.Password);
